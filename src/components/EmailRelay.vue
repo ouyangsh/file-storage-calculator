@@ -3,6 +3,7 @@ import { ref, computed, watch } from 'vue'
 
 const fileName = ref('')
 const fileSize = ref(0) // in bytes
+console.log('✅ App Version: HTTPS-FIX-v2 (sslip.io)')
 const fromName = ref('Acme')
 const subject = ref('')
 const body = ref('')
