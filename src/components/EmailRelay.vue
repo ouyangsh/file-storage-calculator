@@ -86,7 +86,12 @@ const sendEmail = async () => {
     statusMessage.value = '正在通过服务器发送邮件...'
 
     // Call real Django backend API
-    const response = await fetch('http://119.23.182.252:8000/api/email_relay/send/', {
+    // 使用 sslip.io 域名以支持 HTTPS (解决混合内容问题)
+    const apiUrl = window.location.protocol === 'https:' 
+      ? 'https://119.23.182.252.sslip.io/api/email_relay/send/'
+      : 'http://119.23.182.252:8000/api/email_relay/send/';
+    
+    const response = await fetch(apiUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
