@@ -46,14 +46,13 @@ const API_BASE = window.location.protocol === 'https:'
   ? 'https://119.23.182.252.sslip.io/api' 
   : 'http://119.23.182.252:8000/api'
 
-const showQueryDialog = ref(false)
 const showSuccessDialog = ref(false)
 const queryCode = ref('')
 const confirmCode = ref('')
 const uploadUrl = ref('')
 const downloadUrl = ref('')
 const isUploading = ref(false)
-const uploadProgress = ref(0)
+const isOrderCreated = ref(false) // Track if order is created
 
 const confirmOrder = async () => {
   if (!fileName.value) {
@@ -75,7 +74,7 @@ const confirmOrder = async () => {
     const data = await response.json()
     if (response.ok) {
       queryCode.value = data.query_code
-      showQueryDialog.value = true
+      isOrderCreated.value = true
     } else {
       alert('创建订单失败: ' + (data.error || 'Unknown error'))
     }
@@ -119,7 +118,6 @@ const verifyAndUpload = async () => {
     })
 
     if (uploadRes.ok) {
-      showQueryDialog.value = false
       showSuccessDialog.value = true
     } else {
       alert('文件上传失败')
@@ -143,6 +141,7 @@ const resetFlow = () => {
   fileObject.value = null
   queryCode.value = ''
   confirmCode.value = ''
+  isOrderCreated.value = false
 }
 </script>
 
@@ -201,28 +200,32 @@ const resetFlow = () => {
       </div>
     </div>
 
-    <button class="confirm-btn" @click="confirmOrder">确认订单并上传</button>
+    <!-- Step 1: Confirm Order -->
+    <button v-if="!isOrderCreated" class="confirm-btn" @click="confirmOrder">确认订单 (Confirm Order)</button>
     
-    <!-- Dialogs -->
-    <div v-if="showQueryDialog" class="overlay">
-      <div class="dialog">
-        <h3>订单待验证</h3>
-        <p>请联系管理员获取确认码。</p>
-        <div class="code-box">
-          <p class="label">查询码 (Query Code):</p>
-          <p class="code">{{ queryCode }}</p>
-        </div>
-        <div class="input-group-dialog">
-          <label>输入确认码:</label>
-          <input v-model="confirmCode" type="text" placeholder="6位确认码" />
-        </div>
-        <button class="action-btn" @click="verifyAndUpload" :disabled="isUploading">
-          {{ isUploading ? '上传中...' : '提交验证并上传' }}
-        </button>
-        <button class="cancel-btn" @click="showQueryDialog = false" v-if="!isUploading">取消</button>
+    <!-- Step 2: Verification & Upload -->
+    <div v-else class="verification-area">
+      <div class="code-display">
+        <span class="label">查询码 (Query Code):</span>
+        <span class="code">{{ queryCode }}</span>
+        <p class="hint">请联系管理员获取确认码 / Contact Admin for Code</p>
       </div>
+
+      <div class="input-group">
+        <label>确认码 (Confirm Code)</label>
+        <input v-model="confirmCode" type="text" class="text-input" placeholder="输入6位确认码" />
+      </div>
+
+      <button 
+        class="confirm-btn upload-btn" 
+        @click="verifyAndUpload" 
+        :disabled="!confirmCode || isUploading"
+      >
+        {{ isUploading ? '上传中...' : '上传文件 (Upload File)' }}
+      </button>
     </div>
 
+    <!-- Success Dialog -->
     <div v-if="showSuccessDialog" class="overlay">
       <div class="dialog success">
         <div class="icon">✅</div>
@@ -240,150 +243,27 @@ const resetFlow = () => {
 </template>
 
 <style scoped>
-.placeholder-text {
-  color: #9ca3af;
-}
-
-.upload-area {
-  height: 100px;
-  background-color: #f9fafb;
-  border: 1px dashed #d1d5db;
-  border-radius: 12px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  text-align: center;
-  padding: 16px;
-}
-
-.upload-area:hover {
-  border-color: #2563eb;
-  background-color: #eff6ff;
-}
-
-.upload-area.active {
-  border-style: solid;
-  border-color: #2563eb;
-  background-color: #eff6ff;
-}
-
-.file-info {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.file-name {
-  font-weight: 600;
-  font-size: 14px;
-  color: #111827;
-  max-width: 280px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.file-size {
-  font-size: 12px;
-  color: #6b7280;
-}
-
-.range-container {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.slider {
-  flex: 1;
-  height: 6px;
-  appearance: none;
-  background: #e5e7eb;
-  border-radius: 3px;
-  outline: none;
-}
-
-.slider::-webkit-slider-thumb {
-  appearance: none;
-  width: 20px;
-  height: 20px;
-  background: #2563eb;
-  border-radius: 50%;
-  cursor: pointer;
-  border: 4px solid #ffffff;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-}
-
-.days-input {
-  width: 60px;
-  background: #f9fafb;
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
-  padding: 8px;
-  color: #111827;
-  font-size: 14px;
-  font-weight: 600;
-  text-align: center;
-}
-
-.result-area {
-  background: #eff6ff;
-  border-radius: 16px;
-  padding: 24px;
-  text-align: center;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.price-label {
-  font-size: 13px;
-  font-weight: 600;
-  color: #1d4ed8;
-}
-
-.price-value {
-  display: flex;
-  align-items: baseline;
-  justify-content: center;
-  gap: 2px;
-  color: #2563eb;
-}
-
-.currency {
-  font-size: 20px;
-  font-weight: 700;
-}
-
-.amount {
-  font-size: 40px;
-  font-weight: 800;
-  letter-spacing: -0.5px;
-}
-
-.details {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.detail-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  font-size: 13px;
-}
-
-.detail-item .label {
-  color: #6b7280;
-}
-
-.detail-item .value {
-  font-weight: 600;
-  color: #374151;
-}
+/* Reusing existing styles */
+.placeholder-text { color: #9ca3af; }
+.upload-area { height: 100px; background-color: #f9fafb; border: 1px dashed #d1d5db; border-radius: 12px; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.2s ease; text-align: center; padding: 16px; }
+.upload-area:hover { border-color: #2563eb; background-color: #eff6ff; }
+.upload-area.active { border-style: solid; border-color: #2563eb; background-color: #eff6ff; }
+.file-info { display: flex; flex-direction: column; gap: 2px; }
+.file-name { font-weight: 600; font-size: 14px; color: #111827; max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.file-size { font-size: 12px; color: #6b7280; }
+.range-container { display: flex; align-items: center; gap: 12px; }
+.slider { flex: 1; height: 6px; appearance: none; background: #e5e7eb; border-radius: 3px; outline: none; }
+.slider::-webkit-slider-thumb { appearance: none; width: 20px; height: 20px; background: #2563eb; border-radius: 50%; cursor: pointer; border: 4px solid #ffffff; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+.days-input { width: 60px; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 8px; color: #111827; font-size: 14px; font-weight: 600; text-align: center; }
+.result-area { background: #eff6ff; border-radius: 16px; padding: 24px; text-align: center; display: flex; flex-direction: column; gap: 4px; }
+.price-label { font-size: 13px; font-weight: 600; color: #1d4ed8; }
+.price-value { display: flex; align-items: baseline; justify-content: center; gap: 2px; color: #2563eb; }
+.currency { font-size: 20px; font-weight: 700; }
+.amount { font-size: 40px; font-weight: 800; letter-spacing: -0.5px; }
+.details { display: flex; flex-direction: column; gap: 12px; }
+.detail-item { display: flex; justify-content: space-between; align-items: center; font-size: 13px; }
+.detail-item .label { color: #6b7280; }
+.detail-item .value { font-weight: 600; color: #374151; }
 
 .confirm-btn {
   background-color: #2563eb;
@@ -395,63 +275,31 @@ const resetFlow = () => {
   cursor: pointer;
   margin-top: 16px;
   transition: background-color 0.2s;
+  width: 100%;
 }
-.confirm-btn:hover {
-  background-color: #1d4ed8;
-}
+.confirm-btn:hover { background-color: #1d4ed8; }
+.confirm-btn:disabled { background-color: #9ca3af; cursor: not-allowed; }
 
-.overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0,0,0,0.5);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 100;
-}
-
-.dialog {
-  background: white;
-  padding: 24px;
-  border-radius: 16px;
-  width: 90%;
-  max-width: 400px;
-  box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1);
+.verification-area {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid #e5e7eb;
   display: flex;
   flex-direction: column;
   gap: 16px;
 }
 
-.dialog h3 {
-  margin: 0;
-  color: #111827;
-}
-
-.code-box {
+.code-display {
   background: #f3f4f6;
   padding: 12px;
   border-radius: 8px;
   text-align: center;
 }
+.code-display .label { font-size: 12px; color: #6b7280; display: block; margin-bottom: 4px; }
+.code-display .code { font-size: 24px; font-weight: 700; color: #2563eb; letter-spacing: 2px; }
+.code-display .hint { font-size: 12px; color: #9ca3af; margin: 4px 0 0 0; }
 
-.code-box .label {
-  font-size: 12px;
-  color: #6b7280;
-  margin-bottom: 4px;
-}
-
-.code-box .code {
-  font-size: 24px;
-  font-weight: 700;
-  color: #2563eb;
-  letter-spacing: 2px;
-  margin: 0;
-}
-
-.input-group-dialog input {
+.text-input {
   width: 100%;
   padding: 10px;
   border: 1px solid #d1d5db;
@@ -459,50 +307,13 @@ const resetFlow = () => {
   margin-top: 4px;
 }
 
-.action-btn {
-  background: #2563eb;
-  color: white;
-  border: none;
-  padding: 10px;
-  border-radius: 8px;
-  font-weight: 600;
-  cursor: pointer;
-}
-.action-btn:disabled {
-  background: #9ca3af;
-}
-
-.cancel-btn {
-  background: transparent;
-  border: none;
-  color: #6b7280;
-  cursor: pointer;
-}
-
-.dialog.success {
-  text-align: center;
-}
-.dialog.success .icon {
-  font-size: 48px;
-  margin-bottom: 8px;
-}
-
-.link-box {
-  display: flex;
-  gap: 8px;
-}
-.link-box input {
-  flex: 1;
-  border: 1px solid #d1d5db;
-  border-radius: 6px;
-  padding: 8px;
-  font-size: 12px;
-}
-.link-box button {
-  background: #e5e7eb;
-  border: none;
-  padding: 0 12px;
-  border-radius: 6px;
-  cursor: pointer;
-}
+/* Dialog Styles */
+.overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 100; }
+.dialog { background: white; padding: 24px; border-radius: 16px; width: 90%; max-width: 400px; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1); display: flex; flex-direction: column; gap: 16px; text-align: center; }
+.dialog h3 { margin: 0; color: #111827; }
+.dialog .icon { font-size: 48px; margin-bottom: 8px; }
+.link-box { display: flex; gap: 8px; }
+.link-box input { flex: 1; border: 1px solid #d1d5db; border-radius: 6px; padding: 8px; font-size: 12px; }
+.link-box button { background: #e5e7eb; border: none; padding: 0 12px; border-radius: 6px; cursor: pointer; }
+.action-btn { background: #2563eb; color: white; border: none; padding: 10px; border-radius: 8px; font-weight: 600; cursor: pointer; }
 </style>
