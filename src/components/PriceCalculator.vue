@@ -88,6 +88,11 @@ const verifyAndUpload = async () => {
     alert('请输入确认码')
     return
   }
+  
+  if (!fileName.value || !fileObject.value) {
+    alert('请先选择文件')
+    return
+  }
 
   try {
     // 1. Verify
@@ -96,7 +101,9 @@ const verifyAndUpload = async () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         query_code: queryCode.value,
-        confirm_code: confirmCode.value
+        confirm_code: confirmCode.value,
+        filename: fileName.value,  // 文件名验证
+        filesize: fileSize.value   // 文件大小验证
       })
     })
     const verifyData = await verifyRes.json()
