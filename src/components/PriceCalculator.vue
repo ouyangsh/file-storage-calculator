@@ -52,6 +52,7 @@ const confirmCode = ref('')
 const uploadUrl = ref('')
 const downloadUrl = ref('')
 const isUploading = ref(false)
+const uploadProgress = ref(0)
 const isOrderCreated = ref(false) // Track if order is created
 
 const confirmOrder = async () => {
@@ -113,22 +114,47 @@ const verifyAndUpload = async () => {
       return
     }
 
+
     uploadUrl.value = verifyData.upload_url
     downloadUrl.value = verifyData.download_url
 
-    // 2. Upload to COS
+    // 2. Upload to COS with progress tracking
     isUploading.value = true
+    uploadProgress.value = 0
     
-    const uploadRes = await fetch(uploadUrl.value, {
-      method: 'PUT',
-      body: fileObject.value
+    // 使用 XMLHttpRequest 来追踪上传进度
+    await new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest()
+      
+      // 监听上传进度
+      xhr.upload.addEventListener('progress', (e) => {
+        if (e.lengthComputable) {
+          uploadProgress.value = Math.round((e.loaded / e.total) * 100)
+        }
+      })
+      
+      // 监听上传完成
+      xhr.addEventListener('load', () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          showSuccessDialog.value = true
+          resolve()
+        } else {
+          alert('文件上传失败')
+          reject(new Error('Upload failed'))
+        }
+      })
+      
+      // 监听错误
+      xhr.addEventListener('error', () => {
+        alert('上传过程中发生网络错误')
+        reject(new Error('Network error'))
+      })
+      
+      // 发送请求
+      xhr.open('PUT', uploadUrl.value)
+      xhr.send(fileObject.value)
     })
-
-    if (uploadRes.ok) {
-      showSuccessDialog.value = true
-    } else {
-      alert('文件上传失败')
-    }
+    
   } catch (e) {
     alert('上传过程中发生错误: ' + e.message)
   } finally {
@@ -228,8 +254,16 @@ const resetFlow = () => {
         @click="verifyAndUpload" 
         :disabled="!confirmCode || isUploading"
       >
-        {{ isUploading ? '上传中...' : '上传文件 (Upload File)' }}
+        {{ isUploading ? `上传中 ${uploadProgress}%` : '上传文件 (Upload File)' }}
       </button>
+      
+      <!-- Upload Progress Bar -->
+      <div v-if="isUploading" class="progress-container">
+        <div class="progress-bar">
+          <div class="progress-fill" :style="{ width: uploadProgress + '%' }"></div>
+        </div>
+        <div class="progress-text">{{ uploadProgress }}%</div>
+      </div>
     </div>
 
     <!-- Success Dialog -->
@@ -323,4 +357,33 @@ const resetFlow = () => {
 .link-box input { flex: 1; border: 1px solid #d1d5db; border-radius: 6px; padding: 8px; font-size: 12px; }
 .link-box button { background: #e5e7eb; border: none; padding: 0 12px; border-radius: 6px; cursor: pointer; }
 .action-btn { background: #2563eb; color: white; border: none; padding: 10px; border-radius: 8px; font-weight: 600; cursor: pointer; }
+
+/* Progress Bar Styles */
+.progress-container {
+  margin-top: 16px;
+  width: 100%;
+}
+
+.progress-bar {
+  width: 100%;
+  height: 8px;
+  background-color: #e5e7eb;
+  border-radius: 4px;
+  overflow: hidden;
+  margin-bottom: 8px;
+}
+
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #2563eb 0%, #3b82f6 100%);
+  transition: width 0.3s ease;
+  border-radius: 4px;
+}
+
+.progress-text {
+  text-align: center;
+  font-size: 14px;
+  font-weight: 600;
+  color: #2563eb;
+}
 </style>
