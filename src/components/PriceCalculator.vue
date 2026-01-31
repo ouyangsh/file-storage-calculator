@@ -152,6 +152,12 @@ const verifyAndUpload = async () => {
       
       // 发送请求
       xhr.open('PUT', uploadUrl.value)
+      
+      // 设置必要的请求头
+      if (verifyData.upload_headers && verifyData.upload_headers['x-cos-tagging']) {
+        xhr.setRequestHeader('x-cos-tagging', verifyData.upload_headers['x-cos-tagging'])
+      }
+      
       xhr.send(fileObject.value)
     })
     
