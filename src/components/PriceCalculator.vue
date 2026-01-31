@@ -4,6 +4,7 @@ import { ref, computed } from 'vue'
 const fileName = ref('')
 const fileSize = ref(0) // in bytes
 const retentionDays = ref(2)
+const fileObject = ref(null)
 
 const fileSizeGB = computed(() => {
   return fileSize.value / (1024 * 1024 * 1024)
@@ -28,6 +29,7 @@ const handleFileUpload = (event) => {
   if (file) {
     fileName.value = file.name
     fileSize.value = file.size
+    fileObject.value = file
   }
 }
 
@@ -37,6 +39,110 @@ const formatSize = (bytes) => {
   const sizes = ['B', 'KB', 'MB', 'GB', 'TB']
   const i = Math.floor(Math.log(bytes) / Math.log(k))
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
+}
+
+// --- Order & Upload Logic ---
+const API_BASE = window.location.protocol === 'https:' 
+  ? 'https://119.23.182.252.sslip.io/api' 
+  : 'http://119.23.182.252:8000/api'
+
+const showQueryDialog = ref(false)
+const showSuccessDialog = ref(false)
+const queryCode = ref('')
+const confirmCode = ref('')
+const uploadUrl = ref('')
+const downloadUrl = ref('')
+const isUploading = ref(false)
+const uploadProgress = ref(0)
+
+const confirmOrder = async () => {
+  if (!fileName.value) {
+    alert('请先选择文件')
+    return
+  }
+  
+  try {
+    const response = await fetch(`${API_BASE}/storage/create_order/`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        filename: fileName.value,
+        filesize: fileSize.value,
+        retention_days: retentionDays.value
+      })
+    })
+    
+    const data = await response.json()
+    if (response.ok) {
+      queryCode.value = data.query_code
+      showQueryDialog.value = true
+    } else {
+      alert('创建订单失败: ' + (data.error || 'Unknown error'))
+    }
+  } catch (e) {
+    alert('网络错误: ' + e.message)
+  }
+}
+
+const verifyAndUpload = async () => {
+  if (!confirmCode.value) {
+    alert('请输入确认码')
+    return
+  }
+
+  try {
+    // 1. Verify
+    const verifyRes = await fetch(`${API_BASE}/storage/verify_order/`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        query_code: queryCode.value,
+        confirm_code: confirmCode.value
+      })
+    })
+    const verifyData = await verifyRes.json()
+    
+    if (!verifyRes.ok) {
+      alert('验证失败: ' + (verifyData.error || 'Check code'))
+      return
+    }
+
+    uploadUrl.value = verifyData.upload_url
+    downloadUrl.value = verifyData.download_url
+
+    // 2. Upload to COS
+    isUploading.value = true
+    
+    const uploadRes = await fetch(uploadUrl.value, {
+      method: 'PUT',
+      body: fileObject.value
+    })
+
+    if (uploadRes.ok) {
+      showQueryDialog.value = false
+      showSuccessDialog.value = true
+    } else {
+      alert('文件上传失败')
+    }
+  } catch (e) {
+    alert('上传过程中发生错误: ' + e.message)
+  } finally {
+    isUploading.value = false
+  }
+}
+
+const copyDownloadLink = () => {
+  navigator.clipboard.writeText(downloadUrl.value)
+  alert('链接已复制')
+}
+
+const resetFlow = () => {
+  showSuccessDialog.value = false
+  fileName.value = ''
+  fileSize.value = 0
+  fileObject.value = null
+  queryCode.value = ''
+  confirmCode.value = ''
 }
 </script>
 
@@ -94,6 +200,42 @@ const formatSize = (bytes) => {
         <span class="value">+¥{{ Math.max(0, retentionDays - 2).toFixed(2) }}</span>
       </div>
     </div>
+
+    <button class="confirm-btn" @click="confirmOrder">确认订单并上传</button>
+    
+    <!-- Dialogs -->
+    <div v-if="showQueryDialog" class="overlay">
+      <div class="dialog">
+        <h3>订单待验证</h3>
+        <p>请联系管理员获取确认码。</p>
+        <div class="code-box">
+          <p class="label">查询码 (Query Code):</p>
+          <p class="code">{{ queryCode }}</p>
+        </div>
+        <div class="input-group-dialog">
+          <label>输入确认码:</label>
+          <input v-model="confirmCode" type="text" placeholder="6位确认码" />
+        </div>
+        <button class="action-btn" @click="verifyAndUpload" :disabled="isUploading">
+          {{ isUploading ? '上传中...' : '提交验证并上传' }}
+        </button>
+        <button class="cancel-btn" @click="showQueryDialog = false" v-if="!isUploading">取消</button>
+      </div>
+    </div>
+
+    <div v-if="showSuccessDialog" class="overlay">
+      <div class="dialog success">
+        <div class="icon">✅</div>
+        <h3>上传成功!</h3>
+        <p>文件已安全上传至云端。</p>
+        <div class="link-box">
+          <input readonly :value="downloadUrl" />
+          <button @click="copyDownloadLink">复制</button>
+        </div>
+        <button class="action-btn" @click="resetFlow">完成</button>
+      </div>
+    </div>
+
   </div>
 </template>
 
@@ -241,5 +383,126 @@ const formatSize = (bytes) => {
 .detail-item .value {
   font-weight: 600;
   color: #374151;
+}
+
+.confirm-btn {
+  background-color: #2563eb;
+  color: white;
+  border: none;
+  padding: 12px;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+  margin-top: 16px;
+  transition: background-color 0.2s;
+}
+.confirm-btn:hover {
+  background-color: #1d4ed8;
+}
+
+.overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0,0,0,0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+
+.dialog {
+  background: white;
+  padding: 24px;
+  border-radius: 16px;
+  width: 90%;
+  max-width: 400px;
+  box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.dialog h3 {
+  margin: 0;
+  color: #111827;
+}
+
+.code-box {
+  background: #f3f4f6;
+  padding: 12px;
+  border-radius: 8px;
+  text-align: center;
+}
+
+.code-box .label {
+  font-size: 12px;
+  color: #6b7280;
+  margin-bottom: 4px;
+}
+
+.code-box .code {
+  font-size: 24px;
+  font-weight: 700;
+  color: #2563eb;
+  letter-spacing: 2px;
+  margin: 0;
+}
+
+.input-group-dialog input {
+  width: 100%;
+  padding: 10px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  margin-top: 4px;
+}
+
+.action-btn {
+  background: #2563eb;
+  color: white;
+  border: none;
+  padding: 10px;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.action-btn:disabled {
+  background: #9ca3af;
+}
+
+.cancel-btn {
+  background: transparent;
+  border: none;
+  color: #6b7280;
+  cursor: pointer;
+}
+
+.dialog.success {
+  text-align: center;
+}
+.dialog.success .icon {
+  font-size: 48px;
+  margin-bottom: 8px;
+}
+
+.link-box {
+  display: flex;
+  gap: 8px;
+}
+.link-box input {
+  flex: 1;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  padding: 8px;
+  font-size: 12px;
+}
+.link-box button {
+  background: #e5e7eb;
+  border: none;
+  padding: 0 12px;
+  border-radius: 6px;
+  cursor: pointer;
 }
 </style>
